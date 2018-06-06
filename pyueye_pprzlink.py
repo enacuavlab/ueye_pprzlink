@@ -52,100 +52,98 @@ else:
     sys.exit(1)
 
 
-#class uEyePprzlink:
-#    def __init__(self):
-#        self.take_shot = False
-#        self.idx = 0
-#        self.last_msg = None
-#
-#    def __exit__(self):
-#        self.stop()
-#
+class uEyePprzlink:
+    def __init__(self, verbose=False):
+        self.take_shot = False
+        self.idx = 0
+        self.last_msg = None
+        self.verbose = verbose
 
-take_shot = False
-idx = 0
+        # camera class to simplify uEye API access
+        self.verbose_print("Start uEye interface")
 
-def process_image(image_data, num):
-    # reshape the image data as 1dimensional array
-    image = image_data.as_1d_image()    
-    cv2.imwrite("img-" + str(idx) + ".jpg", image)
+        self.pprzivy = IvyMessagesInterface("pyueye")
 
-def process_msg(ac_id, msg):
-    global take_shot
-    global idx
-    take_shot = True
-    lat = msg['lat']
-    lon = msg['lon']
-    idx = msg['photo_nr']
+        self.cam = Camera()
+        self.cam.init()
+        check(ueye.is_SetExternalTrigger(self.cam.handle(), ueye.IS_SET_TRIGGER_SOFTWARE))
+        self.cam.set_colormode(ueye.IS_CM_BGR8_PACKED)
+        self.cam.set_aoi(0,0, 2048, 2048)
 
-def main():
-    global take_shot
+        # pixel clock
+        self.verbose_print("Pixel clock")
+        self.cam.get_pixel_clock_range(self.verbose)
+        self.cam.set_pixel_clock(20)
+        self.cam.get_pixel_clock(self.verbose)
 
-    pprzivy = IvyMessagesInterface("pyueye")
+        # set expo
+        self.verbose_print("Expo")
+        self.cam.get_exposure_range(self.verbose)
+        self.cam.set_exposure(1.)
+        self.cam.get_exposure(self.verbose)
 
-    # camera class to simplify uEye API access
-    print("Start")
-    cam = Camera()
-    cam.init()
-    check(ueye.is_SetExternalTrigger(cam.handle(), ueye.IS_SET_TRIGGER_SOFTWARE))
-    cam.set_colormode(ueye.IS_CM_BGR8_PACKED)
-    cam.set_aoi(0,0, 2048, 2048)
+        self.verbose_print("Init done")
+        self.buff = self.cam.alloc_single()
+        check(ueye.is_SetDisplayMode(self.cam.handle(), ueye.IS_SET_DM_DIB))
+        self.verbose_print("Alloc done")
 
-    # pixel clock
-    print("Pixel clock")
-    cam.get_pixel_clock_range(True)
-    cam.set_pixel_clock(20)
-    cam.get_pixel_clock(True)
+        # bind to message TODO move to upper class
+        self.pprzivy.subscribe(self.process_msg, PprzMessage("telemetry", "DC_SHOT"))
 
-    # set expo
-    print("Expo")
-    cam.get_exposure_range(True)
-    cam.set_exposure(1.)
-    cam.get_exposure(True)
+    def __exit__(self):
+        if self.pprzivy is not None:
+            self.stop()
 
-    print("Init done")
-    buff = cam.alloc_single()
-    check(ueye.is_SetDisplayMode(cam.handle(), ueye.IS_SET_DM_DIB))
-    print("Alloc done")
+    def stop(self):
+        self.cam.free_single(self.buff)
+        self.verbose_print("Free mem done")
+        self.cam.exit()
+        self.pprzivy.shutdown()
+        self.pprzivy = None
+        self.verbose_print("leaving")
 
-    pprzivy.subscribe(process_msg, PprzMessage("telemetry", "DC_SHOT"))
+    def verbose_print(self, text):
+        if self.verbose:
+            print(text)
 
+    def process_msg(self, ac_id, msg):
+        self.take_shot = True
+        self.idx = int(msg['photo_nr'])
+        self.last_msg = msg
 
-    try:
-        while True:
-            if take_shot:
-                ret = cam.freeze_video(True)
-                if ret == ueye.IS_SUCCESS:
-                    print("Freeze done")
-                    img = ImageData(cam.handle(), buff)
-                    process_image(img, 0)
-                    print("Process done")
+    def process_image(self, image_data, file_type='jpg'):
+        # reshape the image data as 1dimensional array
+        image = image_data.as_1d_image()    
+        image_name = "img_{idx:d}_{lat}_{lon}_{alt}.jpg".format(
+                idx = self.idx,
+                lat = self.last_msg['lat'],
+                lon = self.last_msg['lon'],
+                alt = self.last_msg['hmsl'])
+        # TODO add phi, theta, psi, time
+        cv2.imwrite(image_name, image)
+
+    def run(self):
+        try:
+            while True:
+                if self.take_shot:
+                    ret = self.cam.freeze_video(True)
+                    if ret == ueye.IS_SUCCESS:
+                        self.verbose_print("Freeze done")
+                        img = ImageData(self.cam.handle(), self.buff)
+                        self.process_image(img, 0)
+                        self.verbose_print("Process done")
+                    else:
+                        self.verbose_print('Freeze fail with {%d}' % ret)
+                    self.take_shot = False
                 else:
-                    print('Freeze fail with {%d}' % ret)
-                take_shot = False
-            else:
-                time.sleep(0.1)
+                    time.sleep(0.1)
+        except (KeyboardInterrupt, SystemExit):
+            pass
 
-            #key = raw_input("Waiting enter (q+enter to leave): ")
-            #if key == 'q':
-            #    break
-            #ret = cam.freeze_video(True)
-            #if ret == ueye.IS_SUCCESS:
-            #    print("Freeze done")
-            #    img = ImageData(cam.handle(), buff)
-            #    process_image(img, 0)
-            #    print("Process done")
-            #else:
-            #    print('Freeze fail with {%d}' % ret)
-    except (KeyboardInterrupt, SystemExit):
-        pass
 
-    cam.free_single(buff)
-    print("Free mem done")
-    cam.exit()
-    pprzivy.shutdown()
-    print("leaving")
 
 if __name__ == "__main__":
-    main()
+    cam_ueye = uEyePprzlink(verbose=True)
+    cam_ueye.run()
+    cam_ueye.stop()
 
