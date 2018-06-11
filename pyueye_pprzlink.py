@@ -149,8 +149,47 @@ class uEyeIvy(uEyePprzlink):
         except (KeyboardInterrupt, SystemExit):
             pass
 
+
 class uEyeSerial(uEyePprzlink):
-    pass
+    def __init__(self, verbose=False):
+        from pprzlink.serial import SerialMessagesInterface
+
+        # init Serial interface
+        self.pprzserial = SerialMessagesInterface(self.msg_cb)
+        # init cam related part
+        uEyePprzlink.__init__(self, verbose)
+        # start serial thread
+        self.pprzserial.start()
+
+    def __exit__(self):
+        if self.pprzserial.running:
+            self.stop()
+
+    def stop(self):
+        self.pprzserial.shutdown()
+        uEyePprzlink.stop(self)
+
+    def msg_cb(self, s, m):
+        if m.name() == 'DC_SHOT':
+            self.process_msg(s, m)
+
+    def run(self):
+        try:
+            while True:
+                if self.new_msg:
+                    ret = self.cam.freeze_video(True)
+                    if ret == ueye.IS_SUCCESS:
+                        self.verbose_print("Freeze done")
+                        img = ImageData(self.cam.handle(), self.buff)
+                        self.process_image(img, 0)
+                        self.verbose_print("Process done")
+                    else:
+                        self.verbose_print('Freeze fail with {%d}' % ret)
+                    self.new_msg = False
+                else:
+                    time.sleep(0.1)
+        except (KeyboardInterrupt, SystemExit):
+            pass
 
 
 if __name__ == "__main__":
