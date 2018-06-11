@@ -45,7 +45,6 @@ from pyueye import ueye
 PPRZLINK_DIR = getenv("PAPARAZZI_HOME", getenv("PPRZLINK_DIR"))
 if PPRZLINK_DIR is not None:
     sys.path.append(PPRZLINK_DIR + "/var/lib/python")
-    from pprzlink.ivy import IvyMessagesInterface
     from pprzlink.message import PprzMessage
 else:
     print("Pprzlink not found")
@@ -54,15 +53,13 @@ else:
 
 class uEyePprzlink:
     def __init__(self, verbose=False):
-        self.take_shot = False
+        self.new_msg = False
         self.idx = 0
         self.last_msg = None
         self.verbose = verbose
 
         # camera class to simplify uEye API access
         self.verbose_print("Start uEye interface")
-
-        self.pprzivy = IvyMessagesInterface("pyueye")
 
         self.cam = Camera()
         self.cam.init()
@@ -87,19 +84,10 @@ class uEyePprzlink:
         check(ueye.is_SetDisplayMode(self.cam.handle(), ueye.IS_SET_DM_DIB))
         self.verbose_print("Alloc done")
 
-        # bind to message TODO move to upper class
-        self.pprzivy.subscribe(self.process_msg, PprzMessage("telemetry", "DC_SHOT"))
-
-    def __exit__(self):
-        if self.pprzivy is not None:
-            self.stop()
-
     def stop(self):
         self.cam.free_single(self.buff)
         self.verbose_print("Free mem done")
         self.cam.exit()
-        self.pprzivy.shutdown()
-        self.pprzivy = None
         self.verbose_print("leaving")
 
     def verbose_print(self, text):
@@ -107,7 +95,7 @@ class uEyePprzlink:
             print(text)
 
     def process_msg(self, ac_id, msg):
-        self.take_shot = True
+        self.new_msg = True
         self.idx = int(msg['photo_nr'])
         self.last_msg = msg
 
@@ -122,10 +110,31 @@ class uEyePprzlink:
         # TODO add phi, theta, psi, time
         cv2.imwrite(image_name, image)
 
+
+class uEyeIvy(uEyePprzlink):
+    def __init__(self, verbose=False):
+        from pprzlink.ivy import IvyMessagesInterface
+
+        # init Ivy interface
+        self.pprzivy = IvyMessagesInterface("pyueye")
+        # init cam related part
+        uEyePprzlink.__init__(self, verbose)
+        # bind to message
+        self.pprzivy.subscribe(self.process_msg, PprzMessage("telemetry", "DC_SHOT"))
+
+    def __exit__(self):
+        if self.pprzivy is not None:
+            self.stop()
+
+    def stop(self):
+        self.pprzivy.shutdown()
+        self.pprzivy = None
+        uEyePprzlink.stop(self)
+
     def run(self):
         try:
             while True:
-                if self.take_shot:
+                if self.new_msg:
                     ret = self.cam.freeze_video(True)
                     if ret == ueye.IS_SUCCESS:
                         self.verbose_print("Freeze done")
@@ -134,16 +143,18 @@ class uEyePprzlink:
                         self.verbose_print("Process done")
                     else:
                         self.verbose_print('Freeze fail with {%d}' % ret)
-                    self.take_shot = False
+                    self.new_msg = False
                 else:
                     time.sleep(0.1)
         except (KeyboardInterrupt, SystemExit):
             pass
 
+class uEyeSerial(uEyePprzlink):
+    pass
 
 
 if __name__ == "__main__":
-    cam_ueye = uEyePprzlink(verbose=True)
+    cam_ueye = uEyeIvy(verbose=True)
     cam_ueye.run()
     cam_ueye.stop()
 
