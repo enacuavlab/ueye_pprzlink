@@ -192,8 +192,41 @@ class uEyeSerial(uEyePprzlink):
             pass
 
 
+class uEyeKeyboard(uEyePprzlink):
+    def __init__(self, verbose=False):
+        # init cam related part
+        uEyePprzlink.__init__(self, verbose)
+        # build fake message
+        msg = PprzMessage("telemetry", "DC_SHOT")
+        msg['photo_nr'] = 0
+        self.process_msg(0, msg)
+
+    def __exit__(self):
+        pass
+
+    def stop(self):
+        uEyePprzlink.stop(self)
+
+    def run(self):
+        try:
+            while True:
+                key = raw_input("Waiting enter (q+enter to leave): ")
+                if key == 'q':
+                    break
+                ret = self.cam.freeze_video(True)
+                if ret == ueye.IS_SUCCESS:
+                    self.verbose_print("Freeze done")
+                    img = ImageData(self.cam.handle(), self.buff)
+                    self.process_image(img, 0)
+                    self.verbose_print("Process done")
+                    self.idx += 1
+                else:
+                    self.verbose_print('Freeze fail with {%d}' % ret)
+        except (KeyboardInterrupt, SystemExit):
+            pass
+
 if __name__ == "__main__":
-    cam_ueye = uEyeIvy(verbose=True)
+    cam_ueye = uEyeKeyboard(verbose=True)
     cam_ueye.run()
     cam_ueye.stop()
 
