@@ -1,0 +1,7 @@
+Simple Python interface between PPRZLINK and uEye cameras
+
+Supported interface
+- Ivy
+- Serial
+- Keyboard (mostly for debug)
+
