@@ -32,12 +32,12 @@
 
 from pyueye_camera import Camera
 from pyueye_utils import ImageData, check
-from os import getenv
+from os import getenv, path, makedirs
 import sys
 import time
 import cv2
 import numpy as np
-
+import pyexiv2
 
 from pyueye import ueye
 
@@ -52,11 +52,14 @@ else:
 
 
 class uEyePprzlink:
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, output_dir='images'):
         self.new_msg = False
         self.idx = 0
         self.last_msg = None
         self.verbose = verbose
+        self.output_dir = output_dir
+        if not path.exists(self.output_dir):
+            makedirs(self.output_dir)
 
         # camera class to simplify uEye API access
         self.verbose_print("Start uEye interface")
@@ -99,16 +102,55 @@ class uEyePprzlink:
         self.idx = int(msg['photo_nr'])
         self.last_msg = msg
 
+    def set_gps_exif(self, file_name, lat, lon, alt):
+        """Adds GPS position as EXIF metadata
+        file_name -- image file
+        lat -- latitude (1e7 deg, as int)
+        lon -- longitude (1e7 deg, as int)
+        alt -- altitude MSL (in mm, as int)
+        """
+        def get_loc(value, loc):
+            if value < 0:
+                return loc[0]
+            elif value > 0:
+                return loc[1]
+            else:
+                return ""
+
+        exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+        exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+        exiv_alt = pyexiv2.Rational(alt, 1000)
+
+        exiv_image = pyexiv2.ImageMetadata(file_name)
+        exiv_image.read()
+        exiv_image["Exif.GPSInfo.GPSLatitude"] = exiv_lat
+        exiv_image["Exif.GPSInfo.GPSLatitudeRef"] = get_loc(lat, ["S", "N"])
+        exiv_image["Exif.GPSInfo.GPSLongitude"] = exiv_lng
+        exiv_image["Exif.GPSInfo.GPSLongitudeRef"] = get_loc(lon, ["W", "E"])
+        exiv_image["Exif.GPSInfo.GPSAltitude"] = exiv_alt
+        exiv_image["Exif.GPSInfo.GPSAltitudeRef"] = '0'
+        exiv_image["Exif.Image.GPSTag"] = 654
+        exiv_image["Exif.GPSInfo.GPSMapDatum"] = "WGS-84"
+        exiv_image["Exif.GPSInfo.GPSVersionID"] = '2 0 0 0'
+        exiv_image.write()
+
     def process_image(self, image_data, file_type='jpg'):
         # reshape the image data as 1dimensional array
-        image = image_data.as_1d_image()    
-        image_name = "img_{idx:d}_{lat}_{lon}_{alt}.jpg".format(
-                idx = self.idx,
-                lat = self.last_msg['lat'],
-                lon = self.last_msg['lon'],
-                alt = self.last_msg['hmsl'])
-        # TODO add phi, theta, psi, time
+        image = image_data.as_1d_image()
+        lat = int(self.last_msg['lat'])
+        lon = int(self.last_msg['lon'])
+        alt = int(self.last_msg['hmsl'])
+        phi = int(self.last_msg['phi'])
+        theta = int(self.last_msg['theta'])
+        psi = int(self.last_msg['psi'])
+        time = int(self.last_msg['itow'])
+        image_name = "img_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
+                self.idx, lat, lon, alt, phi, theta, psi, time)
+        image_name = path.join(self.output_dir, image_name)
         cv2.imwrite(image_name, image)
+        # also set GPS pos in exif metadata
+        self.set_gps_exif(image_name, lat, lon, alt)
+        self.verbose_print("save image: {}".format(image_name))
 
 
 class uEyeIvy(uEyePprzlink):
@@ -226,7 +268,24 @@ class uEyeKeyboard(uEyePprzlink):
             pass
 
 if __name__ == "__main__":
-    cam_ueye = uEyeKeyboard(verbose=True)
+    import argparse
+    parser = argparse.ArgumentParser(description="uEye over PPRZLINK interface")
+    parser.add_argument('interface', choices=['ivy', 'serial', 'keyboard'], help="Select the interface to trigger images")
+    # TODO aperture, ...
+    #parser.add_argument('-a', '--aperture', dest='aperture', default=auto, help="aperture")
+    parser.add_argument('-v', '--verbose', dest='verbose', default=False, action='store_true', help="display debug messages")
+    args = parser.parse_args()
+
+    if args.interface == 'ivy':
+        cam_ueye = uEyeIvy(verbose=args.verbose)
+    elif args.interface == 'serial':
+        cam_ueye = uEyeSerial(verbose=args.verbose)
+    elif args.interface == 'keyboard':
+        cam_ueye = uEyeKeyboard(verbose=args.verbose)
+    else:
+        print("unknown interface")
+        exit(1)
+
     cam_ueye.run()
     cam_ueye.stop()
 
