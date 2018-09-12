@@ -119,7 +119,10 @@ class uEyePprzlink:
 
         exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
         exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-        exiv_alt = pyexiv2.Rational(alt, 1000)
+        if alt > 0.:
+            exiv_alt = pyexiv2.Rational(alt, 1000)
+        else:
+            exiv_alt = pyexiv2.Rational(0,1)
 
         exiv_image = pyexiv2.ImageMetadata(file_name)
         exiv_image.read()
@@ -144,7 +147,7 @@ class uEyePprzlink:
         theta = int(self.last_msg['theta'])
         psi = int(self.last_msg['psi'])
         time = int(self.last_msg['itow'])
-        image_name = "img_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
+        image_name = "img_{:04d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
                 self.idx, lat, lon, alt, phi, theta, psi, time)
         image_name = path.join(self.output_dir, image_name)
         cv2.imwrite(image_name, image)
