@@ -44,7 +44,8 @@ from pyueye import ueye
 # if PAPARAZZI_HOME not set, try PPRZLINK_DIR
 PPRZLINK_DIR = getenv("PAPARAZZI_HOME", getenv("PPRZLINK_DIR"))
 if PPRZLINK_DIR is not None:
-    sys.path.append(PPRZLINK_DIR + "/var/lib/python")
+    sys.path.append(PPRZLINK_DIR)
+    #sys.path.append(PPRZLINK_DIR + "/var/lib/python")
     from pprzlink.message import PprzMessage
 else:
     print("Pprzlink not found")
@@ -119,7 +120,10 @@ class uEyePprzlink:
 
         exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
         exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-        exiv_alt = pyexiv2.Rational(alt, 1000)
+	if alt > 0.:
+	        exiv_alt = pyexiv2.Rational(alt, 1000)
+	else:
+		exiv_alt = pyexiv2.Rational(0,1)
 
         exiv_image = pyexiv2.ImageMetadata(file_name)
         exiv_image.read()
@@ -144,7 +148,7 @@ class uEyePprzlink:
         theta = int(self.last_msg['theta'])
         psi = int(self.last_msg['psi'])
         time = int(self.last_msg['itow'])
-        image_name = "img_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
+        image_name = "img_{:04d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
                 self.idx, lat, lon, alt, phi, theta, psi, time)
         image_name = path.join(self.output_dir, image_name)
         cv2.imwrite(image_name, image)
@@ -197,7 +201,7 @@ class uEyeSerial(uEyePprzlink):
         from pprzlink.serial import SerialMessagesInterface
 
         # init Serial interface
-        self.pprzserial = SerialMessagesInterface(self.msg_cb)
+        self.pprzserial = SerialMessagesInterface(self.msg_cb, device='/dev/ttyS1', verbose=True)
         # init cam related part
         uEyePprzlink.__init__(self, verbose)
         # start serial thread
@@ -212,7 +216,7 @@ class uEyeSerial(uEyePprzlink):
         uEyePprzlink.stop(self)
 
     def msg_cb(self, s, m):
-        if m.name() == 'DC_SHOT':
+        if m.name == 'DC_SHOT':
             self.process_msg(s, m)
 
     def run(self):
