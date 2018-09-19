@@ -35,9 +35,14 @@ from pyueye_utils import ImageData, check
 from os import getenv, path, makedirs
 import sys
 import time
+
+sys.path.insert(0,'/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
+assert cv2.__version__[0] == '3', 'The fisheye module requires opencv version >= 3.0.0'
+
 import numpy as np
 import pyexiv2
+import json
 
 from pyueye import ueye
 
@@ -58,6 +63,7 @@ class uEyePprzlink:
         self.idx = 0
         self.last_msg = None
         self.verbose = verbose
+        self.calib = None
         self.output_dir = output_dir
         if not path.exists(self.output_dir):
             makedirs(self.output_dir)
@@ -93,6 +99,17 @@ class uEyePprzlink:
         self.verbose_print("Free mem done")
         self.cam.exit()
         self.verbose_print("leaving")
+
+    def set_calib(self, conf_file):
+        with open(conf_file, 'r') as f:
+            conf = json.load(f)
+            self.verbose_print(json.dumps(conf))
+            K = np.array(conf['K'])
+            D = np.array(conf['D'])
+            dim = tuple(conf['dim'])
+            map1, map2 = cv2.fisheye.initUndistortRectifyMap(K, D, np.eye(3), K, dim, cv2.CV_16SC2)
+            self.calib = (map1, map2)
+            self.verbose_print("Calib set")
 
     def verbose_print(self, text):
         if self.verbose:
@@ -150,11 +167,18 @@ class uEyePprzlink:
         time = int(self.last_msg['itow'])
         image_name = "img_{:04d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
                 self.idx, lat, lon, alt, phi, theta, psi, time)
-        image_name = path.join(self.output_dir, image_name)
-        cv2.imwrite(image_name, image)
+        image_name_full = path.join(self.output_dir, image_name)
+        cv2.imwrite(image_name_full, image)
         # also set GPS pos in exif metadata
-        self.set_gps_exif(image_name, lat, lon, alt)
-        self.verbose_print("save image: {}".format(image_name))
+        self.set_gps_exif(image_name_full, lat, lon, alt)
+        self.verbose_print("save image: {}".format(image_name_full))
+        if self.calib is not None:
+            map1, map2 = self.calib
+            undist_img = cv2.remap(image, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+            undist_name_full = path.join(self.output_dir, "undist_{}".format(image_name))
+            cv2.imwrite(undist_name_full, undist_img)
+            self.set_gps_exif(undist_name_full, lat, lon, alt)
+            self.verbose_print("save undist: {}".format(undist_name_full))
 
 
 class uEyeIvy(uEyePprzlink):
@@ -277,6 +301,7 @@ if __name__ == "__main__":
     parser.add_argument('interface', choices=['ivy', 'serial', 'keyboard'], help="Select the interface to trigger images")
     # TODO aperture, ...
     #parser.add_argument('-a', '--aperture', dest='aperture', default=auto, help="aperture")
+    parser.add_argument('-c', '--calib', dest='calib', default=None, help="Calibration parameter for the camera, will compute undistorted images if set")
     parser.add_argument('-v', '--verbose', dest='verbose', default=False, action='store_true', help="display debug messages")
     args = parser.parse_args()
 
@@ -289,6 +314,9 @@ if __name__ == "__main__":
     else:
         print("unknown interface")
         exit(1)
+
+    if args.calib is not None:
+        cam_ueye.set_calib(args.calib)
 
     cam_ueye.run()
     cam_ueye.stop()
