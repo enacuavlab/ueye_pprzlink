@@ -44,7 +44,8 @@ from pyueye import ueye
 # if PAPARAZZI_HOME not set, try PPRZLINK_DIR
 PPRZLINK_DIR = getenv("PAPARAZZI_HOME", getenv("PPRZLINK_DIR"))
 if PPRZLINK_DIR is not None:
-    sys.path.append(PPRZLINK_DIR + "/var/lib/python")
+    sys.path.append(PPRZLINK_DIR)
+    #sys.path.append(PPRZLINK_DIR + "/var/lib/python")
     from pprzlink.message import PprzMessage
 else:
     print("Pprzlink not found")
@@ -200,7 +201,7 @@ class uEyeSerial(uEyePprzlink):
         from pprzlink.serial import SerialMessagesInterface
 
         # init Serial interface
-        self.pprzserial = SerialMessagesInterface(self.msg_cb)
+        self.pprzserial = SerialMessagesInterface(self.msg_cb, device='/dev/ttyS1', verbose=True)
         # init cam related part
         uEyePprzlink.__init__(self, verbose)
         # start serial thread
@@ -215,7 +216,7 @@ class uEyeSerial(uEyePprzlink):
         uEyePprzlink.stop(self)
 
     def msg_cb(self, s, m):
-        if m.name() == 'DC_SHOT':
+        if m.name == 'DC_SHOT':
             self.process_msg(s, m)
 
     def run(self):
