@@ -32,7 +32,7 @@
 
 from pyueye_camera import Camera
 from pyueye_utils import ImageData, check, uEyeException
-from os import getenv, path, makedirs
+from os import getenv, path, makedirs, system
 import sys
 import time
 
@@ -64,9 +64,12 @@ class uEyePprzlink:
         self.last_msg = None
         self.verbose = verbose
         self.calib = None
-        self.output_dir = output_dir
-        if not path.exists(self.output_dir):
-            makedirs(self.output_dir)
+        self.output_dir_orig = path.join(output_dir,'orig')
+        self.output_dir_undist = path.join(output_dir,'undist')
+        if not path.exists(self.output_dir_orig):
+            makedirs(self.output_dir_orig)
+        if not path.exists(self.output_dir_undist):
+            makedirs(self.output_dir_undist)
 
         # camera class to simplify uEye API access
         self.verbose_print("Start uEye interface")
@@ -75,8 +78,9 @@ class uEyePprzlink:
         try:
             self.cam.init()
         except uEyeException:
-            print("Camera init failed. Leaving")
-            exit(1)
+            self.verbose_print("Camera init failed")
+            self.cam = None
+            return
             
         check(ueye.is_SetExternalTrigger(self.cam.handle(), ueye.IS_SET_TRIGGER_SOFTWARE))
         self.cam.set_colormode(ueye.IS_CM_BGR8_PACKED)
@@ -100,10 +104,11 @@ class uEyePprzlink:
         self.verbose_print("Alloc done")
 
     def stop(self):
-        self.cam.free_single(self.buff)
-        self.verbose_print("Free mem done")
-        self.cam.exit()
-        self.verbose_print("leaving")
+        if self.cam is not None:
+            self.cam.free_single(self.buff)
+            self.verbose_print("Free mem done")
+            self.cam.exit()
+            self.verbose_print("leaving")
 
     def set_calib(self, conf_file):
         with open(conf_file, 'r') as f:
@@ -172,7 +177,7 @@ class uEyePprzlink:
         time = int(self.last_msg['itow'])
         image_name = "img_{:04d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
                 self.idx, lat, lon, alt, phi, theta, psi, time)
-        image_name_full = path.join(self.output_dir, image_name)
+        image_name_full = path.join(self.output_dir_orig, image_name)
         cv2.imwrite(image_name_full, image)
         # also set GPS pos in exif metadata
         self.set_gps_exif(image_name_full, lat, lon, alt)
@@ -180,7 +185,7 @@ class uEyePprzlink:
         if self.calib is not None:
             map1, map2 = self.calib
             undist_img = cv2.remap(image, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-            undist_name_full = path.join(self.output_dir, "undist_{}".format(image_name))
+            undist_name_full = path.join(self.output_dir_undist, "undist_{}".format(image_name))
             cv2.imwrite(undist_name_full, undist_img)
             self.set_gps_exif(undist_name_full, lat, lon, alt)
             self.verbose_print("save undist: {}".format(undist_name_full))
@@ -209,7 +214,7 @@ class uEyeIvy(uEyePprzlink):
     def run(self):
         try:
             while True:
-                if self.new_msg:
+                if self.new_msg and self.cam is not None:
                     ret = self.cam.freeze_video(True)
                     if ret == ueye.IS_SUCCESS:
                         self.verbose_print("Freeze done")
@@ -226,7 +231,7 @@ class uEyeIvy(uEyePprzlink):
 
 
 class uEyeSerial(uEyePprzlink):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, allow_shutdown=False):
         from pprzlink.serial import SerialMessagesInterface
 
         # init Serial interface
@@ -235,6 +240,8 @@ class uEyeSerial(uEyePprzlink):
         uEyePprzlink.__init__(self, verbose)
         # start serial thread
         self.pprzserial.start()
+
+        self.allow_shutdown = allow_shutdown
 
     def __exit__(self):
         if self.pprzserial.running:
@@ -247,11 +254,18 @@ class uEyeSerial(uEyePprzlink):
     def msg_cb(self, s, m):
         if m.name == 'DC_SHOT':
             self.process_msg(s, m)
+        if m.name == 'PAYLOAD_COMMAND':
+            print(m['command'])
+            if self.allow_shutdown and m['command'][0] == ord('o'):
+                # receiving the poweroff command
+                self.stop()
+                time.sleep(0.5)
+                system("sudo shutdown -h now")
 
     def run(self):
         try:
             while True:
-                if self.new_msg:
+                if self.new_msg and self.cam is not None:
                     ret = self.cam.freeze_video(True)
                     if ret == ueye.IS_SUCCESS:
                         self.verbose_print("Freeze done")
@@ -288,15 +302,16 @@ class uEyeKeyboard(uEyePprzlink):
                 key = raw_input("Waiting enter (q+enter to leave): ")
                 if key == 'q':
                     break
-                ret = self.cam.freeze_video(True)
-                if ret == ueye.IS_SUCCESS:
-                    self.verbose_print("Freeze done")
-                    img = ImageData(self.cam.handle(), self.buff)
-                    self.process_image(img, 0)
-                    self.verbose_print("Process done")
-                    self.idx += 1
-                else:
-                    self.verbose_print('Freeze fail with {%d}' % ret)
+                if self.cam is not None:
+                    ret = self.cam.freeze_video(True)
+                    if ret == ueye.IS_SUCCESS:
+                        self.verbose_print("Freeze done")
+                        img = ImageData(self.cam.handle(), self.buff)
+                        self.process_image(img, 0)
+                        self.verbose_print("Process done")
+                        self.idx += 1
+                    else:
+                        self.verbose_print('Freeze fail with {%d}' % ret)
         except (KeyboardInterrupt, SystemExit):
             pass
 
@@ -307,13 +322,14 @@ if __name__ == "__main__":
     # TODO aperture, ...
     #parser.add_argument('-a', '--aperture', dest='aperture', default=auto, help="aperture")
     parser.add_argument('-c', '--calib', dest='calib', default=None, help="Calibration parameter for the camera, will compute undistorted images if set")
+    parser.add_argument('-s', '--allow_shutdown', dest='allow_shutdown', default=False, action='store_true', help="allow shutdown computer when receiving correct message")
     parser.add_argument('-v', '--verbose', dest='verbose', default=False, action='store_true', help="display debug messages")
     args = parser.parse_args()
 
     if args.interface == 'ivy':
         cam_ueye = uEyeIvy(verbose=args.verbose)
     elif args.interface == 'serial':
-        cam_ueye = uEyeSerial(verbose=args.verbose)
+        cam_ueye = uEyeSerial(verbose=args.verbose, allow_shutdown=args.allow_shutdown)
     elif args.interface == 'keyboard':
         cam_ueye = uEyeKeyboard(verbose=args.verbose)
     else:
