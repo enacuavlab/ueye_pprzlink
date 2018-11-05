@@ -31,7 +31,7 @@
 #------------------------------------------------------------------------------
 
 from pyueye_camera import Camera
-from pyueye_utils import ImageData, check
+from pyueye_utils import ImageData, check, uEyeException
 from os import getenv, path, makedirs
 import sys
 import time
@@ -50,7 +50,7 @@ from pyueye import ueye
 PPRZLINK_DIR = getenv("PAPARAZZI_HOME", getenv("PPRZLINK_DIR"))
 if PPRZLINK_DIR is not None:
     sys.path.append(PPRZLINK_DIR)
-    #sys.path.append(PPRZLINK_DIR + "/var/lib/python")
+    sys.path.append(PPRZLINK_DIR + "/var/lib/python")
     from pprzlink.message import PprzMessage
 else:
     print("Pprzlink not found")
@@ -72,7 +72,12 @@ class uEyePprzlink:
         self.verbose_print("Start uEye interface")
 
         self.cam = Camera()
-        self.cam.init()
+        try:
+            self.cam.init()
+        except uEyeException:
+            print("Camera init failed. Leaving")
+            exit(1)
+            
         check(ueye.is_SetExternalTrigger(self.cam.handle(), ueye.IS_SET_TRIGGER_SOFTWARE))
         self.cam.set_colormode(ueye.IS_CM_BGR8_PACKED)
         self.cam.set_aoi(0,0, 2048, 2048)
