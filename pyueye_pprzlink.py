@@ -145,25 +145,28 @@ class uEyePprzlink:
             else:
                 return ""
 
-        exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-        exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-        if alt > 0.:
-            exiv_alt = pyexiv2.Rational(alt, 1000)
-        else:
-            exiv_alt = pyexiv2.Rational(0,1)
+        try:
+            exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+            exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+            if alt > 0.:
+                exiv_alt = pyexiv2.Rational(alt, 1000)
+            else:
+                exiv_alt = pyexiv2.Rational(0,1)
 
-        exiv_image = pyexiv2.ImageMetadata(file_name)
-        exiv_image.read()
-        exiv_image["Exif.GPSInfo.GPSLatitude"] = exiv_lat
-        exiv_image["Exif.GPSInfo.GPSLatitudeRef"] = get_loc(lat, ["S", "N"])
-        exiv_image["Exif.GPSInfo.GPSLongitude"] = exiv_lng
-        exiv_image["Exif.GPSInfo.GPSLongitudeRef"] = get_loc(lon, ["W", "E"])
-        exiv_image["Exif.GPSInfo.GPSAltitude"] = exiv_alt
-        exiv_image["Exif.GPSInfo.GPSAltitudeRef"] = '0'
-        exiv_image["Exif.Image.GPSTag"] = 654
-        exiv_image["Exif.GPSInfo.GPSMapDatum"] = "WGS-84"
-        exiv_image["Exif.GPSInfo.GPSVersionID"] = '2 0 0 0'
-        exiv_image.write()
+            exiv_image = pyexiv2.ImageMetadata(file_name)
+            exiv_image.read()
+            exiv_image["Exif.GPSInfo.GPSLatitude"] = exiv_lat
+            exiv_image["Exif.GPSInfo.GPSLatitudeRef"] = get_loc(lat, ["S", "N"])
+            exiv_image["Exif.GPSInfo.GPSLongitude"] = exiv_lng
+            exiv_image["Exif.GPSInfo.GPSLongitudeRef"] = get_loc(lon, ["W", "E"])
+            exiv_image["Exif.GPSInfo.GPSAltitude"] = exiv_alt
+            exiv_image["Exif.GPSInfo.GPSAltitudeRef"] = '0'
+            exiv_image["Exif.Image.GPSTag"] = 654
+            exiv_image["Exif.GPSInfo.GPSMapDatum"] = "WGS-84"
+            exiv_image["Exif.GPSInfo.GPSVersionID"] = '2 0 0 0'
+            exiv_image.write()
+        except:
+            pass
 
     def process_image(self, image_data, file_type='jpg'):
         # reshape the image data as 1dimensional array
