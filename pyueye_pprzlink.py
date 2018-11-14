@@ -258,12 +258,13 @@ class uEyeSerial(uEyePprzlink):
         if m.name == 'DC_SHOT':
             self.process_msg(s, m)
         if m.name == 'PAYLOAD_COMMAND':
-            print(m['command'])
             if self.allow_shutdown and m['command'][0] == ord('o'):
                 # receiving the poweroff command
                 self.stop()
                 time.sleep(0.5)
                 system("sudo shutdown -h now")
+            if len(m['command']) == 2 and m['command'][0] == ord('e'):
+                self.cam.set_exposure(float(m['command'][1])/10.)
 
     def run(self):
         try:
