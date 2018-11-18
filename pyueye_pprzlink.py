@@ -146,8 +146,8 @@ class uEyePprzlink:
                 return ""
 
         try:
-            exiv_lat = (pyexiv2.Rational(lat, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-            exiv_lng = (pyexiv2.Rational(lon, 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+            exiv_lat = (pyexiv2.Rational(abs(lat), 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+            exiv_lng = (pyexiv2.Rational(abs(lon), 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
             if alt > 0.:
                 exiv_alt = pyexiv2.Rational(alt, 1000)
             else:
