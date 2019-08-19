@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #------------------------------------------------------------------------------
 #                 PyuEye example - main module
@@ -36,7 +36,7 @@ from os import getenv, path, makedirs, system
 import sys
 import time
 
-sys.path.insert(0,'/opt/ros/kinetic/lib/python2.7/dist-packages')
+#sys.path.insert(0,'/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
 assert cv2.__version__[0] == '3', 'The fisheye module requires opencv version >= 3.0.0'
 
@@ -303,7 +303,7 @@ class uEyeKeyboard(uEyePprzlink):
     def run(self):
         try:
             while True:
-                key = raw_input("Waiting enter (q+enter to leave): ")
+                key = input("Waiting enter (q+enter to leave): ")
                 if key == 'q':
                     break
                 if self.cam is not None:
