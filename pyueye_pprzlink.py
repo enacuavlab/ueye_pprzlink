@@ -42,6 +42,7 @@ assert cv2.__version__[0] == '3', 'The fisheye module requires opencv version >=
 
 import numpy as np
 import pyexiv2
+from pyexiv2.utils import make_fraction
 import json
 
 from pyueye import ueye
@@ -146,12 +147,12 @@ class uEyePprzlink:
                 return ""
 
         try:
-            exiv_lat = (pyexiv2.Rational(abs(lat), 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
-            exiv_lng = (pyexiv2.Rational(abs(lon), 10000000), pyexiv2.Rational(0, 1), pyexiv2.Rational(0, 1))
+            exiv_lat = (make_fraction(abs(lat), 10000000), make_fraction(0, 1), make_fraction(0, 1))
+            exiv_lng = (make_fraction(abs(lon), 10000000), make_fraction(0, 1), make_fraction(0, 1))
             if alt > 0.:
-                exiv_alt = pyexiv2.Rational(alt, 1000)
+                exiv_alt = make_fraction(alt, 1000)
             else:
-                exiv_alt = pyexiv2.Rational(0,1)
+                exiv_alt = make_fraction(0,1)
 
             exiv_image = pyexiv2.ImageMetadata(file_name)
             exiv_image.read()
@@ -165,7 +166,9 @@ class uEyePprzlink:
             exiv_image["Exif.GPSInfo.GPSMapDatum"] = "WGS-84"
             exiv_image["Exif.GPSInfo.GPSVersionID"] = '2 0 0 0'
             exiv_image.write()
+            self.verbose_print("writing exif done")
         except:
+            self.verbose_print("writing exif failed")
             pass
 
     def process_image(self, image_data, file_type='jpg'):
