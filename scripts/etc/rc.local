@@ -1,0 +1,15 @@
+#!/bin/sh -e
+#
+# rc.local
+#
+# This script is executed at the end of each multiuser runlevel.
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# Add the lines below to your rc.local, change paths and user if necessary
+
+if [ -f /home/pprz/bin/start_pyueye_pprzlink ]; then
+    su -l pprz -c 'PPRZLINK_DIR=/home/pprz /home/pprz/bin/start_pyueye_pprzlink&'
+fi
+
+exit 0

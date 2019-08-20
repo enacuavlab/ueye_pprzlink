@@ -1,0 +1,3 @@
+#!/usr/bin/env /bin/bash
+exec /home/pprz/ueye_pprzlink/pyueye_pprzlink.py -v -c /home/pprz/ueye_pprzlink/calib/calib.json -s serial >> /home/pprz/pyueye_pprzlink.log 2>&1
+
