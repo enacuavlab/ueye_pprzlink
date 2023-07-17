@@ -1,0 +1,21 @@
+[Unit]
+Description=ueye_pprzlink
+After=usb-automount.service
+Requires=ueyeethdrc.service ueyeusbdrc.service 
+[Service]
+Type=simple
+ 
+User=root
+Group=root
+
+WorkingDirectory=/home/pprz/imav
+Environment="PPRZLINK_DIR=/home/pprz/pprzlink/lib/v2.0/python/" 
+ExecStart=/usr/bin/python3 /home/pprz/imav/ueye_pprzlink/pyueye_pprzlink.py -v -c /home/pprz/imav/ueye_pprzlink/calib/calib.json -s serial -u /media/usb
+ 
+Restart=on-failure
+ 
+# Configures the time to wait before service is stopped forcefully.
+TimeoutStopSec=100
+ 
+[Install]
+WantedBy=multi-user.target
