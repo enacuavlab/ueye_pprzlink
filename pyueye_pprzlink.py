@@ -32,13 +32,15 @@
 
 from pyueye_camera import Camera
 from pyueye_utils import ImageData, check, uEyeException
-from os import getenv, path, makedirs, system
+from os import getenv, path, makedirs, system, listdir, getcwd
 import sys
+import subprocess
 import time
+import shutil
 
 #sys.path.insert(0,'/opt/ros/kinetic/lib/python2.7/dist-packages')
 import cv2
-assert cv2.__version__[0] == '3', 'The fisheye module requires opencv version >= 3.0.0'
+assert cv2.__version__[0] >= '3', 'The fisheye module requires opencv version >= 3.0.0'
 
 import numpy as np
 import pyexiv2
@@ -49,6 +51,7 @@ from pyueye import ueye
 
 # if PAPARAZZI_HOME not set, try PPRZLINK_DIR
 PPRZLINK_DIR = getenv("PAPARAZZI_HOME", getenv("PPRZLINK_DIR"))
+
 if PPRZLINK_DIR is not None:
     sys.path.append(PPRZLINK_DIR)
     sys.path.append(PPRZLINK_DIR + "/var/lib/python")
@@ -59,18 +62,39 @@ else:
 
 
 class uEyePprzlink:
-    def __init__(self, verbose=False, output_dir='images'):
+    def __init__(self, verbose=False, output_dir='images', usb_path=None):
         self.new_msg = False
         self.idx = 0
         self.last_msg = None
         self.verbose = verbose
         self.calib = None
+        self.usb_path = usb_path
+        self.is_usb = False
+        self.output_dir = output_dir
         self.output_dir_orig = path.join(output_dir,'orig')
         self.output_dir_undist = path.join(output_dir,'undist')
+
+        if path.exists(self.output_dir):
+
+            if len(listdir(self.output_dir_orig)) != 0 or len(listdir(self.output_dir_undist)) != 0:
+                self.verbose_print("Folder " + str(self.output_dir) + " already contains files")
+                new_folder_index = self.get_last_sub_folder_index(getcwd()) + 1
+                new_folder = f"{output_dir}_{new_folder_index}"
+                self.verbose_print("Copying folder " + str(self.output_dir) + " into " + str(new_folder))
+                shutil.move(output_dir, new_folder)
+            
         if not path.exists(self.output_dir_orig):
             makedirs(self.output_dir_orig)
         if not path.exists(self.output_dir_undist):
             makedirs(self.output_dir_undist)
+
+        if usb_path is not None:
+
+            self.output_dir_usb = path.join(self.usb_path,self.output_dir)
+            self.output_dir_usb_orig = path.join(self.output_dir_usb,'orig')
+            self.output_dir_usb_undist = path.join(self.output_dir_usb,'undist')
+            if(self.init_usb_device(usb_path=self.usb_path)):
+                self.init_usb_folder()
 
         # camera class to simplify uEye API access
         self.verbose_print("Start uEye interface")
@@ -96,7 +120,7 @@ class uEyePprzlink:
         # set expo
         self.verbose_print("Expo")
         self.cam.get_exposure_range(self.verbose)
-        self.cam.set_exposure(1.)
+        self.cam.set_auto_exposure()
         self.cam.get_exposure(self.verbose)
 
         self.verbose_print("Init done")
@@ -171,6 +195,79 @@ class uEyePprzlink:
             self.verbose_print("writing exif failed")
             pass
 
+    def init_usb_device(self, usb_path):
+
+        is_mounted = False
+
+        try:
+            if not path.exists(usb_path):
+                self.verbose_print("USB path '" + usb_path + "' doesn't exist")
+                return
+        
+            # Run lsblk command
+            lsblk_result = subprocess.run(["lsblk", "-no", "MOUNTPOINT"], capture_output=True, text=True)
+
+            # Split the output into lines
+            lsblk_result = lsblk_result.stdout.strip().split("\n")
+
+            # Parse each line and check if usb_path is in the MOUNTPOINT column
+            for mounted_point in lsblk_result:
+                if mounted_point == usb_path or f"{mounted_point}/" == usb_path:
+                    is_mounted=True
+                            
+            if is_mounted:
+
+                self.verbose_print("USB drive detected")
+
+            else:
+                self.verbose_print("USB path '" + usb_path + "' is not mounted")
+
+            return is_mounted
+
+        except Exception as error:
+            self.verbose_print(error)
+            return is_mounted
+
+    def init_usb_folder(self):
+
+        self.is_usb = False
+
+        try:
+            if path.exists(self.output_dir_usb):
+
+                if len(listdir(self.output_dir_usb_orig)) != 0 or len(listdir(self.output_dir_usb_undist)) != 0:
+                    self.verbose_print("Folder " + str(self.output_dir_usb) + " already contains files")
+                    new_folder_index = self.get_last_sub_folder_index(self.usb_path) + 1
+                    new_folder = f"{self.output_dir_usb}_{new_folder_index}"
+                    self.verbose_print("Copying folder " + str(self.output_dir_usb) + " into " + str(new_folder))
+                    shutil.move(self.output_dir_usb, new_folder)
+                
+            if not path.exists(self.output_dir_usb_orig):
+                makedirs(self.output_dir_usb_orig)
+            if not path.exists(self.output_dir_usb_undist):
+                makedirs(self.output_dir_usb_undist)
+
+            self.is_usb = True
+            self.verbose_print("USB folder initialized")
+        
+        except Exception as error:
+            self.is_usb = False
+            self.verbose_print("Cannot initialize USB folder")
+            self.verbose_print(error)
+
+    def get_last_sub_folder_index(self,sub_folder_path):
+        max_index = -1
+        prefix = f"{self.output_dir}_"
+        for name in listdir(sub_folder_path):
+            if path.isdir(path.join(sub_folder_path, name)):
+                if name.startswith(prefix):
+                    try:
+                        index = int(name[len(prefix):])
+                        max_index = max(max_index, index)
+                    except ValueError:
+                        pass
+        return max_index
+
     def process_image(self, image_data, file_type='jpg'):
         # reshape the image data as 1dimensional array
         image = image_data.as_1d_image()
@@ -184,10 +281,22 @@ class uEyePprzlink:
         image_name = "img_{:04d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}_{:d}.jpg".format(
                 self.idx, lat, lon, alt, phi, theta, psi, time)
         image_name_full = path.join(self.output_dir_orig, image_name)
-        cv2.imwrite(image_name_full, image)
+        cv2.imwrite(image_name_full, image)         
+
         # also set GPS pos in exif metadata
         self.set_gps_exif(image_name_full, lat, lon, alt)
         self.verbose_print("save image: {}".format(image_name_full))
+
+        if (self.is_usb):
+            image_name_usb_full = path.join(self.output_dir_usb_orig, image_name)
+
+            try:
+                if (shutil.copy2(image_name_full,image_name_usb_full)):
+                    self.verbose_print("save image: {}".format(image_name_usb_full))
+            except Exception as error:
+                self.verbose_print("Cannot save image: {}".format(image_name_usb_full))
+                self.verbose_print(error)
+
         if self.calib is not None:
             map1, map2 = self.calib
             undist_img = cv2.remap(image, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
@@ -196,15 +305,25 @@ class uEyePprzlink:
             self.set_gps_exif(undist_name_full, lat, lon, alt)
             self.verbose_print("save undist: {}".format(undist_name_full))
 
+            if (self.is_usb):
+                undist_name_usb_full = path.join(self.output_dir_usb_undist, "undist_{}".format(image_name))
+
+                try:
+                    if (shutil.copy2(undist_name_full,undist_name_usb_full)):
+                        self.verbose_print("save image: {}".format(undist_name_usb_full))
+                except Exception as error:
+                    self.verbose_print("Cannot save image: {}".format(undist_name_usb_full))
+                    self.verbose_print(error)
+
 
 class uEyeIvy(uEyePprzlink):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, usb_path=None):
         from pprzlink.ivy import IvyMessagesInterface
 
         # init Ivy interface
         self.pprzivy = IvyMessagesInterface("pyueye")
         # init cam related part
-        uEyePprzlink.__init__(self, verbose)
+        uEyePprzlink.__init__(self, verbose, usb_path=usb_path)
         # bind to message
         self.pprzivy.subscribe(self.process_msg, PprzMessage("telemetry", "DC_SHOT"))
 
@@ -227,9 +346,9 @@ class uEyeIvy(uEyePprzlink):
                         img = ImageData(self.cam.handle(), self.buff)
                         self.process_image(img, 0)
                         self.verbose_print("Process done")
+                        self.new_msg = False
                     else:
                         self.verbose_print('Freeze fail with {%d}' % ret)
-                    self.new_msg = False
                 else:
                     time.sleep(0.1)
         except (KeyboardInterrupt, SystemExit):
@@ -237,15 +356,15 @@ class uEyeIvy(uEyePprzlink):
 
 
 class uEyeSerial(uEyePprzlink):
-    def __init__(self, verbose=False, allow_shutdown=False):
+    def __init__(self, verbose=False, allow_shutdown=False, usb_path=None):
         from pprzlink.serial import SerialMessagesInterface
-
         # init Serial interface
-        self.pprzserial = SerialMessagesInterface(self.msg_cb, device='/dev/ttyS1', verbose=True)
+        self.pprzserial = SerialMessagesInterface(self.msg_cb, device='/dev/ttyS2', baudrate=57600, verbose=True)
         # init cam related part
-        uEyePprzlink.__init__(self, verbose)
+        uEyePprzlink.__init__(self, verbose, usb_path=usb_path)
         # start serial thread
         self.pprzserial.start()
+        time.sleep(0.1)
 
         self.allow_shutdown = allow_shutdown
 
@@ -279,9 +398,9 @@ class uEyeSerial(uEyePprzlink):
                         img = ImageData(self.cam.handle(), self.buff)
                         self.process_image(img, 0)
                         self.verbose_print("Process done")
+                        self.new_msg = False
                     else:
                         self.verbose_print('Freeze fail with {%d}' % ret)
-                    self.new_msg = False
                 else:
                     time.sleep(0.1)
         except (KeyboardInterrupt, SystemExit):
@@ -289,9 +408,9 @@ class uEyeSerial(uEyePprzlink):
 
 
 class uEyeKeyboard(uEyePprzlink):
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, usb_path=None):
         # init cam related part
-        uEyePprzlink.__init__(self, verbose)
+        uEyePprzlink.__init__(self, verbose, usb_path=usb_path)
         # build fake message
         msg = PprzMessage("telemetry", "DC_SHOT")
         msg['photo_nr'] = 0
@@ -331,14 +450,15 @@ if __name__ == "__main__":
     parser.add_argument('-c', '--calib', dest='calib', default=None, help="Calibration parameter for the camera, will compute undistorted images if set")
     parser.add_argument('-s', '--allow_shutdown', dest='allow_shutdown', default=False, action='store_true', help="allow shutdown computer when receiving correct message")
     parser.add_argument('-v', '--verbose', dest='verbose', default=False, action='store_true', help="display debug messages")
+    parser.add_argument('-u', '--usb_path', dest='usb_path', default=None, help="USB path to save images (ex: /media/usb0)")
     args = parser.parse_args()
 
     if args.interface == 'ivy':
-        cam_ueye = uEyeIvy(verbose=args.verbose)
+        cam_ueye = uEyeIvy(verbose=args.verbose, usb_path=args.usb_path)
     elif args.interface == 'serial':
-        cam_ueye = uEyeSerial(verbose=args.verbose, allow_shutdown=args.allow_shutdown)
+        cam_ueye = uEyeSerial(verbose=args.verbose, allow_shutdown=args.allow_shutdown, usb_path=args.usb_path)
     elif args.interface == 'keyboard':
-        cam_ueye = uEyeKeyboard(verbose=args.verbose)
+        cam_ueye = uEyeKeyboard(verbose=args.verbose, usb_path=args.usb_path)
     else:
         print("unknown interface")
         exit(1)
@@ -348,4 +468,3 @@ if __name__ == "__main__":
 
     cam_ueye.run()
     cam_ueye.stop()
-

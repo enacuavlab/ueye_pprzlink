@@ -1,0 +1,17 @@
+[Unit]
+Description=Automount /dev/sda1 at /media/usb 
+[Service]
+Type=oneshot
+ 
+User=root
+Group=root
+ 
+ExecStart=/home/pprz/imav/ueye_pprzlink/scripts/usb_automount.sh
+ 
+Restart=on-failure
+ 
+# Configures the time to wait before service is stopped forcefully.
+TimeoutStopSec=20
+ 
+[Install]
+WantedBy=multi-user.target
