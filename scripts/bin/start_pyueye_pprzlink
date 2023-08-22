@@ -1,3 +1,4 @@
 #!/usr/bin/env /bin/bash
-exec /home/pprz/ueye_pprzlink/pyueye_pprzlink.py -v -c /home/pprz/ueye_pprzlink/calib/calib.json -s serial >> /home/pprz/pyueye_pprzlink.log 2>&1
-
+export PPRZLINK_DIR="/home/pprz/pprzlink/lib/v2.0/python"
+#exec sudo mount /dev/sda1 /media/usb # Comments this line if you don't want to use the usb drive, or if the usb drive is mounted in another way
+exec sudo --preserve-env=PPRZLINK_DIR python3 /home/pprz/imav/ueye_pprzlink/pyueye_pprzlink.py -v -c /home/pprz/imav/ueye_pprzlink/calib/calib.json -s serial -u /media/usb& >> /home/pprz/imav/pyueye_pprzlink.log 2>&1
