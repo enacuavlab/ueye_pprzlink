@@ -1,0 +1,3 @@
+pyueye
+py3exiv2
+

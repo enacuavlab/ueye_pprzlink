@@ -5,3 +5,11 @@ Supported interface
 - Serial
 - Keyboard (mostly for debug)
 
+
+py3exiv2 requires:
+
+- python-all-dev (≥ 3.2)
+- libexiv2-dev (≥ 0.20)
+- libboost-python-dev (≥ 1.48)
+- g++
+
