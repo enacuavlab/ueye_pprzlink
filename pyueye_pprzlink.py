@@ -378,8 +378,10 @@ class uEyeSerial(uEyePprzlink):
 
     def msg_cb(self, s, m):
         if m.name == 'DC_SHOT':
+            self.verbose_print("DC_SHOT received")
             self.process_msg(s, m)
         if m.name == 'PAYLOAD_COMMAND':
+            self.verbose_print("PAYLOAD_COMMAND " + str(m['command']) + " received")
             if self.allow_shutdown and m['command'][0] == ord('o'):
                 # receiving the poweroff command
                 self.stop()
