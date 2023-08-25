@@ -386,7 +386,17 @@ class uEyeSerial(uEyePprzlink):
                 time.sleep(0.5)
                 system("sudo shutdown -h now")
             if len(m['command']) == 2 and m['command'][0] == ord('e'):
-                self.cam.set_exposure(float(m['command'][1])/10.)
+                if m['command'][1] == 0:
+                    self.verbose_print("set auto expo...")
+                    self.cam.capture_video(True)
+                    self.cam.set_auto_exposure(True)
+                    time.sleep(3)
+                    self.cam.stop_video()
+                    expo = self.cam.get_exposure()
+                    self.verbose_print("auto expo done: " + str(expo))
+
+                else:
+                    self.cam.set_exposure(float(m['command'][1])/10.)
 
     def run(self):
         try:
