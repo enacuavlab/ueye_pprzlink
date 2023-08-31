@@ -360,6 +360,7 @@ class uEyeSerial(uEyePprzlink):
         from pprzlink.serial import SerialMessagesInterface
         # init Serial interface
         self.pprzserial = SerialMessagesInterface(self.msg_cb, device='/dev/ttyS2', baudrate=57600, verbose=True)
+        self.ac_id = None
         # init cam related part
         uEyePprzlink.__init__(self, verbose, usb_path=usb_path)
         # start serial thread
@@ -387,7 +388,8 @@ class uEyeSerial(uEyePprzlink):
                 self.stop()
                 time.sleep(0.5)
                 system("sudo shutdown -h now")
-            if len(m['command']) == 2 and m['command'][0] == ord('e'):
+            elif len(m['command']) == 2 and m['command'][0] == ord('e'):
+                self.ac_id = int(s)
                 if m['command'][1] == 0:
                     self.verbose_print("set auto expo...")
                     self.cam.capture_video(True)
@@ -399,6 +401,18 @@ class uEyeSerial(uEyePprzlink):
 
                 else:
                     self.cam.set_exposure(float(m['command'][1])/10.)
+                self.get_expo()
+
+            elif len(m['command']) == 1 and m['command'][0] == ord('e'):
+                self.get_expo()
+
+    def get_expo(self):
+        expo = self.cam.get_exposure()
+        expo = int(min(expo*10, 255))
+        msg = PprzMessage("datalink", "PAYLOAD_COMMAND")
+        msg['ac_id'] = self.ac_id
+        msg['command'] = [ord('e'), expo]
+        self.pprzserial.send(msg)
 
     def run(self):
         try:
